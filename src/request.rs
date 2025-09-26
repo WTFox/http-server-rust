@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Read};
 use std::net::TcpStream;
 
 #[derive(Debug)]
@@ -13,35 +13,57 @@ pub struct Request {
 
 impl From<&TcpStream> for Request {
     fn from(stream: &TcpStream) -> Self {
-        let reader = BufReader::new(stream);
-        let mut lines = reader.lines();
+        let mut reader = BufReader::new(stream);
+        let mut request_line = String::new();
+        reader.read_line(&mut request_line).expect("uh oh");
 
-        let request_line = lines.next().unwrap().unwrap();
         let mut parts = request_line.split_whitespace();
-        let method = parts.next().ok_or("Unable to parse method").unwrap();
-        let path = parts.next().ok_or("Unable to parse path").unwrap();
-        let protocol = parts.next().ok_or("Unable to parse protocol").unwrap();
+
+        let method = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Missing HTTP method"))
+            .expect("uh oh");
+
+        let request_path = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Missing request path"))
+            .expect("uh oh");
 
         let mut headers = HashMap::new();
-        while let Some(line) = lines.next() {
-            let l = line.unwrap_or(String::from(""));
-            if l.is_empty() {
+        loop {
+            let mut header_line = String::new();
+            reader.read_line(&mut header_line).expect("Uh oh");
+
+            let header_line = header_line.trim();
+            if header_line.is_empty() {
                 break;
             }
-            let parts = l.split(": ").collect::<Vec<&str>>();
-            let key = String::from(parts[0].trim());
-            let value = String::from(parts[1].trim());
-            headers.insert(key, value);
+            if let Some((name, value)) = header_line.split_once(":") {
+                headers.insert(name.trim().to_string(), value.trim().to_string());
+            }
         }
 
-        let body = lines.next().unwrap().unwrap();
+        let body_length: usize = match headers.get("Content-Length") {
+            Some(length) => length.parse().unwrap_or(0),
+            None => 0,
+        };
+
+        let body = if body_length > 0 {
+            let mut body_buf = vec![0u8; body_length];
+            match reader.read_exact(&mut body_buf) {
+                Ok(_) => String::from_utf8(body_buf).ok(),
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
 
         Request {
             method: method.into(),
-            path: path.into(),
-            protocol: protocol.into(),
+            path: request_path.into(),
+            protocol: String::from("HTTP 1.1"),
             headers: headers,
-            body: Some(body),
+            body: body,
         }
     }
 }

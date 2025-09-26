@@ -5,11 +5,13 @@ use std::{io::Write, net::TcpStream};
 
 pub fn handle_index(_request: &Request, stream: &mut TcpStream) {
     let resp = Response::new(200, vec![], None);
+    println!("responding with: {:?}", resp.as_bytes());
     stream.write(&resp.as_bytes()).expect("uh oh");
 }
 
 pub fn handler_404(_request: &Request, stream: &mut TcpStream) {
     let resp = Response::new(404, vec![], None);
+    println!("responding with: {:?}", resp.as_bytes());
     stream.write(&resp.as_bytes()).expect("uh oh");
 }
 
@@ -17,6 +19,7 @@ pub fn handle_echo(request: &Request, stream: &mut TcpStream) {
     let param = request.path.split("/").collect::<Vec<&str>>()[2];
     let header = format!("Content-Length: {}", &param.len());
     let resp = Response::new(200, vec!["Content-Type: text/plain", &header], Some(param));
+    println!("responding with: {:?}", resp.as_bytes());
     stream.write(&resp.as_bytes()).expect("uh oh");
 }
 
@@ -38,6 +41,7 @@ pub fn handle_user_agent(request: &Request, stream: &mut TcpStream) {
     }
 
     let resp = Response::new(200, headers, body);
+    println!("responding with: {:?}", resp.as_bytes());
     stream.write(&resp.as_bytes()).expect("uh oh");
 }
 
@@ -77,15 +81,20 @@ pub fn handle_file_get(request: &Request, stream: &mut TcpStream) {
         headers: vec![],
         body: None,
     };
+    println!("responding with: {:?}", resp.as_bytes());
     stream.write(&resp.as_bytes()).expect("uh oh");
 }
 
 pub fn handle_file_post(request: &Request, stream: &mut TcpStream) {
+    println!("handle_file_post");
+
     let args: Vec<String> = env::args().collect();
     let mut directory = String::from("");
     if args.len() == 3 && args[1] == "--directory" {
         directory = args[2].clone();
     }
+    println!("args: {:?}", args);
+    println!("post: request.path: {:?}", request.path);
 
     let filename = request
         .path
@@ -94,15 +103,13 @@ pub fn handle_file_post(request: &Request, stream: &mut TcpStream) {
 
     println!("filename: {:?}", filename);
 
-    if let Err(e) = fs::create_dir_all(&directory) {
-        println!("{}", e);
-    } else {
-        println!("files created");
-    }
+    println!("creating dirs");
+    println!("dir: {:?}", directory);
+    fs::create_dir_all(&directory).expect("OH GOD");
 
     let filepath = format!("{}{}", directory, filename);
-    let path = Path::new(&filepath);
     println!("filepath: {:?}", filepath);
+    let path = Path::new(&filepath);
     println!("path: {:?}", path);
 
     if path.exists() {
@@ -112,7 +119,10 @@ pub fn handle_file_post(request: &Request, stream: &mut TcpStream) {
 
     let mut f = fs::File::create(path).expect("couldn't create file");
     println!("file created successfully");
-    let contents = request.body.as_ref().unwrap();
+    let contents = match request.body.as_ref() {
+        Some(contents) => contents,
+        None => "",
+    };
     println!("contents: {:?}", contents);
     f.write_all(contents.as_bytes())
         .expect("couldn't write file?");
@@ -123,5 +133,6 @@ pub fn handle_file_post(request: &Request, stream: &mut TcpStream) {
         body: None,
     };
     println!("resp: {:?}", resp);
+    println!("responding with: {:?}", resp.as_bytes());
     stream.write(&resp.as_bytes()).expect("uh oh");
 }
