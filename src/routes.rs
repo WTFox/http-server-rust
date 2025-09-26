@@ -41,7 +41,7 @@ pub fn handle_user_agent(request: &Request, stream: &mut TcpStream) {
     stream.write(&resp.as_bytes()).expect("uh oh");
 }
 
-pub fn handle_file(request: &Request, stream: &mut TcpStream) {
+pub fn handle_file_get(request: &Request, stream: &mut TcpStream) {
     let args: Vec<String> = env::args().collect();
     let mut directory = String::from("");
     if args.len() == 3 && args[1] == "--directory" {
@@ -77,5 +77,51 @@ pub fn handle_file(request: &Request, stream: &mut TcpStream) {
         headers: vec![],
         body: None,
     };
+    stream.write(&resp.as_bytes()).expect("uh oh");
+}
+
+pub fn handle_file_post(request: &Request, stream: &mut TcpStream) {
+    let args: Vec<String> = env::args().collect();
+    let mut directory = String::from("");
+    if args.len() == 3 && args[1] == "--directory" {
+        directory = args[2].clone();
+    }
+
+    let filename = request
+        .path
+        .strip_prefix("/files/")
+        .expect("invalid filepath");
+
+    println!("filename: {:?}", filename);
+
+    if let Err(e) = fs::create_dir_all(&directory) {
+        println!("{}", e);
+    } else {
+        println!("files created");
+    }
+
+    let filepath = format!("{}{}", directory, filename);
+    let path = Path::new(&filepath);
+    println!("filepath: {:?}", filepath);
+    println!("path: {:?}", path);
+
+    if path.exists() {
+        println!("path exists");
+        panic!("uhoh file already there??");
+    }
+
+    let mut f = fs::File::create(path).expect("couldn't create file");
+    println!("file created successfully");
+    let contents = request.body.as_ref().unwrap();
+    println!("contents: {:?}", contents);
+    f.write_all(contents.as_bytes())
+        .expect("couldn't write file?");
+
+    let resp = Response {
+        status_code: 201,
+        headers: vec![],
+        body: None,
+    };
+    println!("resp: {:?}", resp);
     stream.write(&resp.as_bytes()).expect("uh oh");
 }

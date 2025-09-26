@@ -18,7 +18,11 @@ fn route_request(mut stream: TcpStream) -> Result<(), Box<dyn std::error::Error>
             routes::handle_echo(&request, &mut stream);
         }
         path if path.starts_with("/files/") => {
-            routes::handle_file(&request, &mut stream);
+            if request.method == "GET" {
+                routes::handle_file_get(&request, &mut stream);
+            } else if request.method == "POST" {
+                routes::handle_file_post(&request, &mut stream);
+            }
         }
         _ => {
             routes::handler_404(&request, &mut stream);

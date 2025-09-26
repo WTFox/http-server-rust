@@ -8,6 +8,7 @@ pub struct Request {
     pub path: String,
     pub protocol: String,
     pub headers: HashMap<String, String>,
+    pub body: Option<String>,
 }
 
 impl From<&TcpStream> for Request {
@@ -22,7 +23,6 @@ impl From<&TcpStream> for Request {
         let protocol = parts.next().ok_or("Unable to parse protocol").unwrap();
 
         let mut headers = HashMap::new();
-
         while let Some(line) = lines.next() {
             let l = line.unwrap_or(String::from(""));
             if l.is_empty() {
@@ -34,11 +34,14 @@ impl From<&TcpStream> for Request {
             headers.insert(key, value);
         }
 
+        let body = lines.next().unwrap().unwrap();
+
         Request {
             method: method.into(),
             path: path.into(),
             protocol: protocol.into(),
             headers: headers,
+            body: Some(body),
         }
     }
 }

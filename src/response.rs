@@ -1,6 +1,7 @@
 fn get_status(code: usize) -> &'static str {
     match code {
         200 => "200 OK",
+        201 => "201 Created",
         404 => "404 Not Found",
         _ => unimplemented!(),
     }
