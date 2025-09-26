@@ -37,23 +37,12 @@ impl<'a> Response<'a> {
         let mut output = String::new();
         output.push_str(&self.status_line().as_str());
 
-        println!("1. building response bytes");
         if !self.headers.is_empty() {
             output.push_str(self.headers.join("\r\n").as_str());
-            output.push_str("\r\n");
+            output.push_str("\r\n\r\n");
         }
-        output.push_str("\r\n");
 
-        println!("building response bytes");
-        match &self.body {
-            Some(body) => {
-                output.push_str(body);
-            }
-            _ => {
-                output.push_str("\r\n");
-            }
-        }
-        println!("response vect: {:?}", output);
+        output.push_str(self.body.as_deref().unwrap_or("\r\n"));
         output.into()
     }
 }

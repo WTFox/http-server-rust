@@ -2,37 +2,57 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::net::TcpStream;
 
+use anyhow::Result;
+
+#[derive(Debug)]
+pub enum HttpMethod {
+    GET,
+    POST,
+}
+
+impl TryFrom<&str> for HttpMethod {
+    type Error = anyhow::Error;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "GET" => Ok(HttpMethod::GET),
+            "POST" => Ok(HttpMethod::POST),
+            _ => anyhow::bail!("Invalid http method"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Request {
-    pub method: String,
+    pub method: HttpMethod,
     pub path: String,
     pub protocol: String,
     pub headers: HashMap<String, String>,
     pub body: Option<String>,
 }
 
-impl From<&TcpStream> for Request {
-    fn from(stream: &TcpStream) -> Self {
+impl Request {
+    pub fn from_stream(stream: &TcpStream) -> Result<Request> {
         let mut reader = BufReader::new(stream);
         let mut request_line = String::new();
-        reader.read_line(&mut request_line).expect("uh oh");
+        reader.read_line(&mut request_line)?;
 
         let mut parts = request_line.split_whitespace();
 
-        let method = parts
-            .next()
-            .ok_or_else(|| anyhow::anyhow!("Missing HTTP method"))
-            .expect("uh oh");
+        let method = HttpMethod::try_from(
+            parts
+                .next()
+                .ok_or_else(|| anyhow::anyhow!("Missing request method"))?,
+        )?;
 
         let request_path = parts
             .next()
-            .ok_or_else(|| anyhow::anyhow!("Missing request path"))
-            .expect("uh oh");
+            .ok_or_else(|| anyhow::anyhow!("Missing request path"))?;
 
         let mut headers = HashMap::new();
         loop {
             let mut header_line = String::new();
-            reader.read_line(&mut header_line).expect("Uh oh");
+            reader.read_line(&mut header_line)?;
 
             let header_line = header_line.trim();
             if header_line.is_empty() {
@@ -58,12 +78,12 @@ impl From<&TcpStream> for Request {
             None
         };
 
-        Request {
-            method: method.into(),
+        Ok(Request {
+            method: method,
             path: request_path.into(),
             protocol: String::from("HTTP 1.1"),
             headers: headers,
             body: body,
-        }
+        })
     }
 }
