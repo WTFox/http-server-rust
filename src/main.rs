@@ -2,6 +2,7 @@ use codecrafters_http_server::{routes, Request};
 
 use std::net::TcpListener;
 use std::net::TcpStream;
+use std::thread;
 
 fn router(mut stream: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
     let request = Request::from(&stream);
@@ -25,10 +26,13 @@ fn router(mut stream: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
 
 fn main() {
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
+
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
-                router(stream).expect("error when handling incoming request");
+                thread::spawn(|| {
+                    router(stream).expect("error when handling incoming request");
+                });
             }
             Err(e) => {
                 println!("error: {}", e);
