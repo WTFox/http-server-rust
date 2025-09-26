@@ -1,4 +1,5 @@
 use crate::{Request, Response};
+use std::{env, fs, path::Path};
 
 use std::{io::Write, net::TcpStream};
 
@@ -37,5 +38,44 @@ pub fn handle_user_agent(request: &Request, stream: &mut TcpStream) {
     }
 
     let resp = Response::new(200, headers, body);
+    stream.write(&resp.as_bytes()).expect("uh oh");
+}
+
+pub fn handle_file(request: &Request, stream: &mut TcpStream) {
+    let args: Vec<String> = env::args().collect();
+    let mut directory = String::from("");
+    if args.len() == 3 && args[1] == "--directory" {
+        directory = args[2].clone();
+    }
+
+    let filename = request
+        .path
+        .strip_prefix("/files/")
+        .expect("invalid filepath");
+
+    let filepath = format!("{}{}", directory, filename);
+    let path = Path::new(&filepath);
+
+    if path.exists() {
+        let file_contents = fs::read_to_string(path).expect("no file found");
+
+        let mut headers = vec!["Content-Type: application/octet-stream"];
+        let new = format!("Content-Length: {}", file_contents.len());
+        headers.push(&new);
+
+        let resp = Response {
+            status_code: 200,
+            headers: headers,
+            body: Some(file_contents.as_str()),
+        };
+        stream.write(&resp.as_bytes()).expect("uh oh");
+        return;
+    }
+
+    let resp = Response {
+        status_code: 404,
+        headers: vec![],
+        body: None,
+    };
     stream.write(&resp.as_bytes()).expect("uh oh");
 }

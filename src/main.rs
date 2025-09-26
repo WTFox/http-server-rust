@@ -4,7 +4,7 @@ use std::net::TcpListener;
 use std::net::TcpStream;
 use std::thread;
 
-fn router(mut stream: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+fn route_request(mut stream: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
     let request = Request::from(&stream);
     let path = request.path.as_str();
     match path {
@@ -16,6 +16,9 @@ fn router(mut stream: TcpStream) -> Result<(), Box<dyn std::error::Error>> {
         }
         path if path.starts_with("/echo/") => {
             routes::handle_echo(&request, &mut stream);
+        }
+        path if path.starts_with("/files/") => {
+            routes::handle_file(&request, &mut stream);
         }
         _ => {
             routes::handler_404(&request, &mut stream);
@@ -31,7 +34,7 @@ fn main() {
         match stream {
             Ok(stream) => {
                 thread::spawn(|| {
-                    router(stream).expect("error when handling incoming request");
+                    route_request(stream).expect("error when handling incoming request");
                 });
             }
             Err(e) => {
