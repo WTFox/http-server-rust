@@ -24,7 +24,7 @@ impl From<&TcpStream> for Request {
         let mut headers = HashMap::new();
 
         while let Some(line) = lines.next() {
-            let l = line.unwrap();
+            let l = line.unwrap_or(String::from(""));
             if l.is_empty() {
                 break;
             }
