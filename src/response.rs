@@ -1,3 +1,8 @@
+use anyhow::Result;
+use std::{io::Write, net::TcpStream};
+
+use crate::Headers;
+
 fn get_status(code: usize) -> &'static str {
     match code {
         200 => "200 OK",
@@ -10,14 +15,8 @@ fn get_status(code: usize) -> &'static str {
 #[derive(Debug)]
 pub struct Response<'a> {
     pub status_code: usize,
-    pub headers: Vec<&'a str>,
+    pub headers: Headers,
     pub body: Option<&'a str>,
-}
-
-impl<'a> From<&[u8]> for Response<'a> {
-    fn from(_bytes: &[u8]) -> Response<'a> {
-        todo!();
-    }
 }
 
 impl<'a> Response<'a> {
@@ -25,7 +24,21 @@ impl<'a> Response<'a> {
         format!("HTTP/1.1 {}\r\n", get_status(self.status_code))
     }
 
-    pub fn new(status_code: usize, headers: Vec<&'a str>, body: Option<&'a str>) -> Response<'a> {
+    fn headers(&self) -> String {
+        self.headers
+            .iter()
+            .map(|(k, v)| format!("{}: {}\r\n", k, v))
+            .collect()
+    }
+
+    pub fn send(&self, stream: &mut TcpStream) -> Result<()> {
+        match stream.write(&self.as_bytes()) {
+            Ok(_) => Ok(()),
+            Err(e) => anyhow::bail!("couldn't send response {}", e),
+        }
+    }
+
+    pub fn new(status_code: usize, headers: Headers, body: Option<&'a str>) -> Response<'a> {
         Response {
             status_code: status_code,
             headers: headers,
@@ -38,8 +51,8 @@ impl<'a> Response<'a> {
         output.push_str(&self.status_line().as_str());
 
         if !self.headers.is_empty() {
-            output.push_str(self.headers.join("\r\n").as_str());
-            output.push_str("\r\n\r\n");
+            output.push_str(&self.headers());
+            output.push_str("\r\n");
         }
 
         output.push_str(self.body.as_deref().unwrap_or("\r\n"));
@@ -58,7 +71,10 @@ mod test {
     fn test_as_bytes() {
         let response = Response::new(
             200,
-            vec!["Content-Type: text/plain", "Content-Length: 3"],
+            Headers::from([
+                (String::from("Content-Type"), String::from("text/plain")),
+                (String::from("Content-Length"), String::from("3")),
+            ]),
             Some("abc"),
         );
 
@@ -67,7 +83,7 @@ mod test {
 
     #[test]
     fn test_incomplete() {
-        let response = Response::new(404, vec![], None);
+        let response = Response::new(404, Headers::new(), None);
         assert!(&response.as_bytes() == b"HTTP/1.1 404 Not Found\r\n\r\n");
     }
 
@@ -77,7 +93,10 @@ mod test {
 
         let response = Response {
             status_code: 200,
-            headers: vec!["Content-Type: text/plain", "Content-Length: 19"],
+            headers: Headers::from([
+                (String::from("Content-Type"), String::from("text/plain")),
+                (String::from("Content-Length"), String::from("19")),
+            ]),
             body: Some("pineapple/raspberry"),
         };
         assert!(&response.as_bytes() == expected);
