@@ -1,4 +1,5 @@
 use anyhow::Result;
+use bytes::{Bytes, BytesMut};
 use std::{io::Write, net::TcpStream};
 
 use crate::Headers;
@@ -25,10 +26,13 @@ impl<'a> Response<'a> {
     }
 
     fn headers(&self) -> String {
-        self.headers
+        let mut headers = self
+            .headers
             .iter()
             .map(|(k, v)| format!("{}: {}\r\n", k, v))
-            .collect()
+            .collect::<Vec<String>>();
+        headers.sort();
+        headers.concat()
     }
 
     pub fn send(&self, stream: &mut TcpStream) -> Result<()> {
@@ -46,17 +50,17 @@ impl<'a> Response<'a> {
         }
     }
 
-    pub fn as_bytes(&self) -> Vec<u8> {
-        let mut output = String::new();
-        output.push_str(&self.status_line().as_str());
+    pub fn as_bytes(&self) -> Bytes {
+        let mut output = BytesMut::new();
 
+        output.extend_from_slice(&self.status_line().as_bytes());
         if !self.headers.is_empty() {
-            output.push_str(&self.headers());
-            output.push_str("\r\n");
+            output.extend_from_slice(&self.headers().as_bytes());
+            output.extend_from_slice(b"\r\n");
         }
+        output.extend_from_slice(self.body.as_deref().unwrap_or("\r\n").as_bytes());
 
-        output.push_str(self.body.as_deref().unwrap_or("\r\n"));
-        output.into()
+        output.freeze()
     }
 }
 
@@ -65,7 +69,7 @@ mod test {
     use super::*;
 
     const RESPONSE_BYTES: &[u8] =
-        b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\nabc";
+        b"HTTP/1.1 200 OK\r\nContent-Length: 3\r\nContent-Type: text/plain\r\n\r\nabc";
 
     #[test]
     fn test_as_bytes() {
@@ -84,21 +88,21 @@ mod test {
     #[test]
     fn test_incomplete() {
         let response = Response::new(404, Headers::new(), None);
-        assert!(&response.as_bytes() == b"HTTP/1.1 404 Not Found\r\n\r\n");
+        assert!(*response.as_bytes() == *b"HTTP/1.1 404 Not Found\r\n\r\n");
     }
 
     #[test]
     fn test_with_headers() {
-        let expected = b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 19\r\n\r\npineapple/raspberry";
+        let expected = b"HTTP/1.1 200 OK\r\nContent-Length: 19\r\nContent-Type: text/plain\r\n\r\npineapple/raspberry";
 
-        let response = Response {
-            status_code: 200,
-            headers: Headers::from([
+        let response = Response::new(
+            200,
+            Headers::from([
                 (String::from("Content-Type"), String::from("text/plain")),
                 (String::from("Content-Length"), String::from("19")),
             ]),
-            body: Some("pineapple/raspberry"),
-        };
-        assert!(&response.as_bytes() == expected);
+            Some("pineapple/raspberry"),
+        );
+        assert!(*response.as_bytes() == *expected);
     }
 }

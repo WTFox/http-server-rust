@@ -6,7 +6,12 @@ use std::{fs, path::Path};
 use std::{io::Write, net::TcpStream};
 
 pub fn handle_index(_app: &AppConfig, _request: &Request, stream: &mut TcpStream) -> Result<()> {
-    Response::new(200, Headers::new(), None).send(stream)
+    Response::new(
+        200,
+        Headers::from([(String::from("Content-Type"), String::from("text/plain"))]),
+        None,
+    )
+    .send(stream)
 }
 
 pub fn handler_404(_app: &AppConfig, _request: &Request, stream: &mut TcpStream) -> Result<()> {
@@ -69,9 +74,9 @@ pub fn handle_file_get(app: &AppConfig, request: &Request, stream: &mut TcpStrea
 
     if path.exists() {
         let file_contents = fs::read_to_string(path)?;
-        let resp = Response {
-            status_code: 200,
-            headers: Headers::from([
+        return Response::new(
+            200,
+            Headers::from([
                 (
                     String::from("Content-Type"),
                     String::from("application/octet-stream"),
@@ -81,10 +86,9 @@ pub fn handle_file_get(app: &AppConfig, request: &Request, stream: &mut TcpStrea
                     file_contents.len().to_string(),
                 ),
             ]),
-            body: Some(file_contents.as_str()),
-        };
-        stream.write(&resp.as_bytes())?;
-        return Ok(());
+            Some(file_contents.as_str()),
+        )
+        .send(stream);
     }
 
     Response::new(404, Headers::new(), None).send(stream)
@@ -101,8 +105,15 @@ pub fn handle_file_post(app: &AppConfig, request: &Request, stream: &mut TcpStre
     let filepath = format!("{}{}", directory, filename);
     let path = Path::new(&filepath);
     if path.exists() {
-        println!("path exists");
-        panic!("uhoh file already there??");
+        return Response::new(
+            200,
+            Headers::from([(
+                String::from("Content-Type"),
+                String::from("application/octet-stream"),
+            )]),
+            None,
+        )
+        .send(stream);
     }
 
     fs::create_dir_all(&directory)?;

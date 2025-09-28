@@ -49,6 +49,10 @@ impl Request {
             .next()
             .ok_or_else(|| anyhow::anyhow!("Missing request path"))?;
 
+        let protocol = parts
+            .next()
+            .ok_or_else(|| anyhow::anyhow!("Missing protocol"))?;
+
         let mut headers = HashMap::new();
         loop {
             let mut header_line = String::new();
@@ -81,7 +85,7 @@ impl Request {
         Ok(Request {
             method: method,
             path: request_path.into(),
-            protocol: String::from("HTTP 1.1"),
+            protocol: protocol.into(),
             headers: headers,
             body: body,
         })
