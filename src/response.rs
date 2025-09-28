@@ -1,5 +1,6 @@
 use anyhow::Result;
 use bytes::{Bytes, BytesMut};
+use flate2::{write::GzEncoder, Compression};
 use std::{io::Write, net::TcpStream};
 
 use crate::{AppConfig, Headers, Request};
@@ -57,8 +58,9 @@ impl Response {
             .iter()
             .map(|(k, v)| format!("{}: {}\r\n", k, v))
             .collect::<Vec<String>>();
+
         headers.sort();
-        headers.concat()
+        headers.join("")
     }
 
     pub fn new(status_code: usize, headers: Headers, body: Option<Vec<u8>>) -> Response {
@@ -69,16 +71,33 @@ impl Response {
         }
     }
 
-    pub fn as_bytes(&self) -> Bytes {
+    pub fn as_bytes(&mut self) -> Bytes {
         let mut output = BytesMut::new();
 
         output.extend_from_slice(&self.status_line().as_bytes());
-        if !self.headers.is_empty() {
+
+        let wants_gzip = match self.headers.get("Content-Encoding").or(None) {
+            Some(enc) => enc == &"gzip".to_string(),
+            None => false,
+        };
+
+        let body_bytes = if wants_gzip {
+            let mut e = GzEncoder::new(Vec::new(), Compression::default());
+            e.write_all(self.body.as_deref().unwrap_or(b"")).unwrap();
+            e.finish().unwrap()
+        } else {
+            self.body.as_deref().unwrap_or(b"").to_vec()
+        };
+
+        self.headers
+            .insert("Content-Length".to_string(), body_bytes.len().to_string());
+
+        if !self.headers().is_empty() {
             output.extend_from_slice(&self.headers().as_bytes());
             output.extend_from_slice(b"\r\n");
         }
-        output.extend_from_slice(self.body.as_deref().unwrap_or(b"\r\n"));
 
+        output.extend_from_slice(&body_bytes);
         output.freeze()
     }
 }
@@ -92,7 +111,7 @@ mod test {
 
     #[test]
     fn test_as_bytes() {
-        let response = Response::new(
+        let mut response = Response::new(
             200,
             Headers::from([
                 (String::from("Content-Type"), String::from("text/plain")),
@@ -101,20 +120,20 @@ mod test {
             Some("abc".into()),
         );
 
-        assert!(&response.as_bytes() == RESPONSE_BYTES);
+        assert!(response.as_bytes() == RESPONSE_BYTES);
     }
 
     #[test]
     fn test_incomplete() {
-        let response = Response::new(404, Headers::new(), None);
-        assert!(*response.as_bytes() == *b"HTTP/1.1 404 Not Found\r\n\r\n");
+        let mut response = Response::new(404, Headers::new(), None);
+        assert!(*response.as_bytes() == *b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n");
     }
 
     #[test]
     fn test_with_headers() {
-        let expected = b"HTTP/1.1 200 OK\r\nContent-Length: 19\r\nContent-Type: text/plain\r\n\r\npineapple/raspberry";
+        let expected = Bytes::from("HTTP/1.1 200 OK\r\nContent-Length: 19\r\nContent-Type: text/plain\r\n\r\npineapple/raspberry");
 
-        let response = Response::new(
+        let mut response = Response::new(
             200,
             Headers::from([
                 (String::from("Content-Type"), String::from("text/plain")),
@@ -122,6 +141,6 @@ mod test {
             ]),
             Some("pineapple/raspberry".into()),
         );
-        assert!(*response.as_bytes() == *expected);
+        assert!(response.as_bytes() == expected);
     }
 }
