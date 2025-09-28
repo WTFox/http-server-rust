@@ -18,17 +18,22 @@ pub fn handler_404(_app: &AppConfig, _request: &Request, stream: &mut TcpStream)
     Response::new(404, Headers::new(), None).send(stream)
 }
 
-pub fn handle_echo(_app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
+pub fn handle_echo(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
     let param = request.path.split("/").collect::<Vec<&str>>()[2];
-    Response::new(
-        200,
-        Headers::from([
-            (String::from("Content-Type"), String::from("text/plain")),
-            (String::from("Content-Length"), param.len().to_string()),
-        ]),
-        Some(param),
-    )
-    .send(stream)
+
+    let requested_encoding = match request.headers.get("Accept-Encoding") {
+        Some(enc) => enc.to_string(),
+        None => "".to_string(),
+    };
+    let mut resp_headers = Headers::from([
+        (String::from("Content-Type"), String::from("text/plain")),
+        (String::from("Content-Length"), param.len().to_string()),
+    ]);
+    if app.supported_encodings.contains(&requested_encoding) {
+        resp_headers.insert("Content-Encoding".to_string(), requested_encoding);
+    }
+
+    Response::new(200, resp_headers, Some(param)).send(stream)
 }
 
 pub fn handle_user_agent(

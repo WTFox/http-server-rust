@@ -40,9 +40,7 @@ fn route_request(app: &AppConfig, mut stream: TcpStream) -> Result<()> {
 
 fn main() {
     let args = Args::parse();
-    let app = AppConfig {
-        directory: args.directory,
-    };
+    let app = AppConfig::new(args.directory);
 
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
     for stream in listener.incoming() {

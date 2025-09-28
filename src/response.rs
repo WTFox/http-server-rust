@@ -35,7 +35,7 @@ impl<'a> Response<'a> {
         headers.concat()
     }
 
-    pub fn send(&self, stream: &mut TcpStream) -> Result<()> {
+    pub fn send(&self, request: &Request, stream: &mut TcpStream) -> Result<()> {
         match stream.write(&self.as_bytes()) {
             Ok(_) => Ok(()),
             Err(e) => anyhow::bail!("couldn't send response {}", e),
