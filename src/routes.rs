@@ -33,7 +33,7 @@ pub fn handle_echo(app: &AppConfig, request: &Request, stream: &mut TcpStream) -
         resp_headers.insert("Content-Encoding".to_string(), requested_encoding);
     }
 
-    Response::new(200, resp_headers, Some(param)).send(stream)
+    Response::new(200, resp_headers, Some(param.into())).send(stream)
 }
 
 pub fn handle_user_agent(
@@ -41,7 +41,7 @@ pub fn handle_user_agent(
     request: &Request,
     stream: &mut TcpStream,
 ) -> Result<()> {
-    let default_ua = String::from("");
+    let default_ua = String::new();
     let ua = request
         .headers
         .get("User-Agent")
@@ -50,7 +50,7 @@ pub fn handle_user_agent(
 
     let mut body = None;
     if !ua.is_empty() {
-        body = Some(ua.as_str())
+        body = Some(ua.as_str().into());
     }
 
     Response::new(
@@ -91,7 +91,7 @@ pub fn handle_file_get(app: &AppConfig, request: &Request, stream: &mut TcpStrea
                     file_contents.len().to_string(),
                 ),
             ]),
-            Some(file_contents.as_str()),
+            Some(file_contents.into()),
         )
         .send(stream);
     }

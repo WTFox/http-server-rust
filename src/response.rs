@@ -2,7 +2,7 @@ use anyhow::Result;
 use bytes::{Bytes, BytesMut};
 use std::{io::Write, net::TcpStream};
 
-use crate::Headers;
+use crate::{AppConfig, Headers, Request};
 
 fn get_status(code: usize) -> &'static str {
     match code {
@@ -13,14 +13,36 @@ fn get_status(code: usize) -> &'static str {
     }
 }
 
-#[derive(Debug)]
-pub struct Response<'a> {
-    pub status_code: usize,
-    pub headers: Headers,
-    pub body: Option<&'a str>,
+pub fn send_response(
+    app: &AppConfig,
+    request: &Request,
+    response: &mut Response,
+    stream: &mut TcpStream,
+) -> Result<()> {
+    let requested_encoding = match request.headers.get("Accept-Encoding") {
+        Some(enc) => enc.to_string(),
+        None => "".to_string(),
+    };
+    if app.supported_encodings.contains(&requested_encoding) {
+        response
+            .headers
+            .insert("Content-Encoding".to_string(), requested_encoding);
+    }
+
+    match stream.write(&response.as_bytes()) {
+        Ok(_) => Ok(()),
+        Err(e) => anyhow::bail!("couldn't send response {}", e),
+    }
 }
 
-impl<'a> Response<'a> {
+#[derive(Debug)]
+pub struct Response {
+    pub status_code: usize,
+    pub headers: Headers,
+    pub body: Option<Vec<u8>>,
+}
+
+impl Response {
     fn status_line(&self) -> String {
         format!("HTTP/1.1 {}\r\n", get_status(self.status_code))
     }
@@ -42,7 +64,7 @@ impl<'a> Response<'a> {
         }
     }
 
-    pub fn new(status_code: usize, headers: Headers, body: Option<&'a str>) -> Response<'a> {
+    pub fn new(status_code: usize, headers: Headers, body: Option<Vec<u8>>) -> Response {
         Response {
             status_code: status_code,
             headers: headers,
@@ -58,7 +80,7 @@ impl<'a> Response<'a> {
             output.extend_from_slice(&self.headers().as_bytes());
             output.extend_from_slice(b"\r\n");
         }
-        output.extend_from_slice(self.body.as_deref().unwrap_or("\r\n").as_bytes());
+        output.extend_from_slice(self.body.as_deref().unwrap_or(b"\r\n"));
 
         output.freeze()
     }
@@ -79,7 +101,7 @@ mod test {
                 (String::from("Content-Type"), String::from("text/plain")),
                 (String::from("Content-Length"), String::from("3")),
             ]),
-            Some("abc"),
+            Some("abc".into()),
         );
 
         assert!(&response.as_bytes() == RESPONSE_BYTES);
@@ -101,7 +123,7 @@ mod test {
                 (String::from("Content-Type"), String::from("text/plain")),
                 (String::from("Content-Length"), String::from("19")),
             ]),
-            Some("pineapple/raspberry"),
+            Some("pineapple/raspberry".into()),
         );
         assert!(*response.as_bytes() == *expected);
     }
