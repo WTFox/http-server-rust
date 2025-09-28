@@ -1,21 +1,31 @@
 use anyhow::Result;
 
+use crate::response::send_response;
 use crate::{AppConfig, Headers, Request, Response};
 use std::{fs, path::Path};
 
 use std::{io::Write, net::TcpStream};
 
-pub fn handle_index(_app: &AppConfig, _request: &Request, stream: &mut TcpStream) -> Result<()> {
-    Response::new(
-        200,
-        Headers::from([(String::from("Content-Type"), String::from("text/plain"))]),
-        None,
+pub fn handle_index(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
+    send_response(
+        app,
+        request,
+        &mut Response::new(
+            200,
+            Headers::from([(String::from("Content-Type"), String::from("text/plain"))]),
+            None,
+        ),
+        stream,
     )
-    .send(stream)
 }
 
-pub fn handler_404(_app: &AppConfig, _request: &Request, stream: &mut TcpStream) -> Result<()> {
-    Response::new(404, Headers::new(), None).send(stream)
+pub fn handler_404(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
+    send_response(
+        app,
+        request,
+        &mut Response::new(404, Headers::new(), None),
+        stream,
+    )
 }
 
 pub fn handle_echo(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
@@ -33,14 +43,15 @@ pub fn handle_echo(app: &AppConfig, request: &Request, stream: &mut TcpStream) -
         resp_headers.insert("Content-Encoding".to_string(), requested_encoding);
     }
 
-    Response::new(200, resp_headers, Some(param.into())).send(stream)
+    send_response(
+        app,
+        request,
+        &mut Response::new(200, resp_headers, Some(param.into())),
+        stream,
+    )
 }
 
-pub fn handle_user_agent(
-    _app: &AppConfig,
-    request: &Request,
-    stream: &mut TcpStream,
-) -> Result<()> {
+pub fn handle_user_agent(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
     let default_ua = String::new();
     let ua = request
         .headers
@@ -53,15 +64,19 @@ pub fn handle_user_agent(
         body = Some(ua.as_str().into());
     }
 
-    Response::new(
-        200,
-        Headers::from([
-            (String::from("Content-Type"), String::from("text/plain")),
-            (String::from("Content-Length"), ua.len().to_string()),
-        ]),
-        body,
+    send_response(
+        app,
+        request,
+        &mut Response::new(
+            200,
+            Headers::from([
+                (String::from("Content-Type"), String::from("text/plain")),
+                (String::from("Content-Length"), ua.len().to_string()),
+            ]),
+            body,
+        ),
+        stream,
     )
-    .send(stream)
 }
 
 pub fn handle_file_get(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
@@ -79,24 +94,33 @@ pub fn handle_file_get(app: &AppConfig, request: &Request, stream: &mut TcpStrea
 
     if path.exists() {
         let file_contents = fs::read_to_string(path)?;
-        return Response::new(
-            200,
-            Headers::from([
-                (
-                    String::from("Content-Type"),
-                    String::from("application/octet-stream"),
-                ),
-                (
-                    String::from("Content-Length"),
-                    file_contents.len().to_string(),
-                ),
-            ]),
-            Some(file_contents.into()),
-        )
-        .send(stream);
+        return send_response(
+            app,
+            request,
+            &mut Response::new(
+                200,
+                Headers::from([
+                    (
+                        String::from("Content-Type"),
+                        String::from("application/octet-stream"),
+                    ),
+                    (
+                        String::from("Content-Length"),
+                        file_contents.len().to_string(),
+                    ),
+                ]),
+                Some(file_contents.into()),
+            ),
+            stream,
+        );
     }
 
-    Response::new(404, Headers::new(), None).send(stream)
+    send_response(
+        app,
+        request,
+        &mut Response::new(404, Headers::new(), None),
+        stream,
+    )
 }
 
 pub fn handle_file_post(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
@@ -110,20 +134,29 @@ pub fn handle_file_post(app: &AppConfig, request: &Request, stream: &mut TcpStre
     let filepath = format!("{}{}", directory, filename);
     let path = Path::new(&filepath);
     if path.exists() {
-        return Response::new(
-            200,
-            Headers::from([(
-                String::from("Content-Type"),
-                String::from("application/octet-stream"),
-            )]),
-            None,
-        )
-        .send(stream);
+        return send_response(
+            app,
+            request,
+            &mut Response::new(
+                200,
+                Headers::from([(
+                    String::from("Content-Type"),
+                    String::from("application/octet-stream"),
+                )]),
+                None,
+            ),
+            stream,
+        );
     }
 
     fs::create_dir_all(&directory)?;
     let mut f = fs::File::create(path)?;
     f.write_all(contents.as_bytes())?;
 
-    Response::new(201, Headers::new(), None).send(stream)
+    send_response(
+        app,
+        request,
+        &mut Response::new(201, Headers::new(), None),
+        stream,
+    )
 }
