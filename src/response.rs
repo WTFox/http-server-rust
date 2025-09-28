@@ -19,14 +19,18 @@ pub fn send_response(
     response: &mut Response,
     stream: &mut TcpStream,
 ) -> Result<()> {
-    let requested_encoding = match request.headers.get("Accept-Encoding") {
-        Some(enc) => enc.to_string(),
-        None => "".to_string(),
+    let requested_encodings: Vec<String> = match request.headers.get("Accept-Encoding") {
+        Some(enc) => enc.split(',').map(|n| n.trim().to_string()).collect(),
+        None => vec![],
     };
-    if app.supported_encodings.contains(&requested_encoding) {
-        response
-            .headers
-            .insert("Content-Encoding".to_string(), requested_encoding);
+
+    for requested_encoding in requested_encodings {
+        if app.supported_encodings.contains(&requested_encoding) {
+            response
+                .headers
+                .insert("Content-Encoding".to_string(), requested_encoding);
+            break;
+        }
     }
 
     match stream.write(&response.as_bytes()) {
