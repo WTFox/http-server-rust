@@ -14,26 +14,30 @@ pub async fn route_request(app: &AppConfig, mut stream: TcpStream) -> Result<()>
         let request = Request::from_stream(&mut stream).await?;
         let path = request.path.as_str();
         let mut response = match path {
-            path if path == "/" => {
-                handle_index(&app, &request, &mut stream).await?;
-            }
+            path if path == "/" => handle_index(&app, &request, &mut stream).await?,
             path if path.starts_with("/user-agent") => {
-                handle_user_agent(&app, &request, &mut stream).await?;
+                handle_user_agent(&app, &request, &mut stream).await?
             }
-            path if path.starts_with("/echo/") => {
-                handle_echo(&app, &request, &mut stream).await?;
-            }
+            path if path.starts_with("/echo/") => handle_echo(&app, &request, &mut stream).await?,
             path if path.starts_with("/files/") => match request.method {
                 HttpMethod::GET => handle_file_get(&app, &request, &mut stream).await?,
                 HttpMethod::POST => handle_file_post(&app, &request, &mut stream).await?,
             },
-            _ => {
-                handler_404(&app, &request, &mut stream).await?;
-            }
+            _ => handler_404(&app, &request, &mut stream).await?,
         };
-        // TODO: do more with response here before sending.
-        send_response(app, &request, &mut response, &mut stream).await?
+
+        if let Some(connection) = request.headers.get("Connection") {
+            if connection == "close" {
+                response
+                    .headers
+                    .insert(String::from("Connection"), String::from("close"));
+                send_response(app, &request, &mut response, &mut stream).await?;
+                break;
+            }
+        }
+        send_response(app, &request, &mut response, &mut stream).await?;
     }
+    Ok(())
 }
 
 async fn handle_index(
