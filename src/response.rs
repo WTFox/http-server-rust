@@ -1,7 +1,9 @@
 use anyhow::Result;
 use bytes::{Bytes, BytesMut};
 use flate2::{write::GzEncoder, Compression};
-use std::{io::Write, net::TcpStream};
+use std::io::Write;
+use tokio::io::AsyncWriteExt;
+use tokio::net::TcpStream;
 
 use crate::{AppConfig, Headers, Request};
 
@@ -14,7 +16,7 @@ fn get_status(code: usize) -> &'static str {
     }
 }
 
-pub fn send_response(
+pub async fn send_response(
     app: &AppConfig,
     request: &Request,
     response: &mut Response,
@@ -34,7 +36,7 @@ pub fn send_response(
         }
     }
 
-    match stream.write(&response.as_bytes()) {
+    match stream.write(&response.as_bytes()).await {
         Ok(_) => Ok(()),
         Err(e) => anyhow::bail!("couldn't send response {}", e),
     }

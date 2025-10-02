@@ -4,36 +4,37 @@ use crate::{AppConfig, HttpMethod, Request};
 
 use crate::response::send_response;
 use crate::{Headers, Response};
-use std::net::TcpStream;
 use std::{fs, path::Path};
+use tokio::net::TcpStream;
 
 use std::io::Write;
 
-pub fn route_request(app: &AppConfig, mut stream: TcpStream) -> Result<()> {
-    let request = Request::from_stream(&stream)?;
-    let path = request.path.as_str();
-    match path {
-        path if path == "/" => {
-            handle_index(&app, &request, &mut stream)?;
-        }
-        path if path.starts_with("/user-agent") => {
-            handle_user_agent(&app, &request, &mut stream)?;
-        }
-        path if path.starts_with("/echo/") => {
-            handle_echo(&app, &request, &mut stream)?;
-        }
-        path if path.starts_with("/files/") => match request.method {
-            HttpMethod::GET => handle_file_get(&app, &request, &mut stream)?,
-            HttpMethod::POST => handle_file_post(&app, &request, &mut stream)?,
-        },
-        _ => {
-            handler_404(&app, &request, &mut stream)?;
+pub async fn route_request(app: &AppConfig, mut stream: TcpStream) -> Result<()> {
+    loop {
+        let request = Request::from_stream(&mut stream).await?;
+        let path = request.path.as_str();
+        match path {
+            path if path == "/" => {
+                handle_index(&app, &request, &mut stream).await?;
+            }
+            path if path.starts_with("/user-agent") => {
+                handle_user_agent(&app, &request, &mut stream).await?;
+            }
+            path if path.starts_with("/echo/") => {
+                handle_echo(&app, &request, &mut stream).await?;
+            }
+            path if path.starts_with("/files/") => match request.method {
+                HttpMethod::GET => handle_file_get(&app, &request, &mut stream).await?,
+                HttpMethod::POST => handle_file_post(&app, &request, &mut stream).await?,
+            },
+            _ => {
+                handler_404(&app, &request, &mut stream).await?;
+            }
         }
     }
-    Ok(())
 }
 
-fn handle_index(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
+async fn handle_index(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
     send_response(
         app,
         request,
@@ -44,18 +45,20 @@ fn handle_index(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> R
         ),
         stream,
     )
+    .await
 }
 
-fn handler_404(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
+async fn handler_404(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
     send_response(
         app,
         request,
         &mut Response::new(404, Headers::new(), None),
         stream,
     )
+    .await
 }
 
-fn handle_echo(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
+async fn handle_echo(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
     let param = request.path.split("/").collect::<Vec<&str>>()[2];
 
     let requested_encoding = match request.headers.get("Accept-Encoding") {
@@ -76,9 +79,14 @@ fn handle_echo(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Re
         &mut Response::new(200, resp_headers, Some(param.into())),
         stream,
     )
+    .await
 }
 
-fn handle_user_agent(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
+async fn handle_user_agent(
+    app: &AppConfig,
+    request: &Request,
+    stream: &mut TcpStream,
+) -> Result<()> {
     let default_ua = String::new();
     let ua = request
         .headers
@@ -104,9 +112,10 @@ fn handle_user_agent(app: &AppConfig, request: &Request, stream: &mut TcpStream)
         ),
         stream,
     )
+    .await
 }
 
-fn handle_file_get(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
+async fn handle_file_get(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
     let filename = request
         .path
         .strip_prefix("/files/")
@@ -139,7 +148,8 @@ fn handle_file_get(app: &AppConfig, request: &Request, stream: &mut TcpStream) -
                 Some(file_contents.into()),
             ),
             stream,
-        );
+        )
+        .await;
     }
 
     send_response(
@@ -148,9 +158,14 @@ fn handle_file_get(app: &AppConfig, request: &Request, stream: &mut TcpStream) -
         &mut Response::new(404, Headers::new(), None),
         stream,
     )
+    .await
 }
 
-fn handle_file_post(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
+async fn handle_file_post(
+    app: &AppConfig,
+    request: &Request,
+    stream: &mut TcpStream,
+) -> Result<()> {
     let directory = app.directory.as_deref().unwrap_or_default();
     let filename = request.path.strip_prefix("/files/").unwrap();
     let contents = match request.body.as_ref() {
@@ -173,7 +188,8 @@ fn handle_file_post(app: &AppConfig, request: &Request, stream: &mut TcpStream) 
                 None,
             ),
             stream,
-        );
+        )
+        .await;
     }
 
     fs::create_dir_all(&directory)?;
@@ -186,4 +202,5 @@ fn handle_file_post(app: &AppConfig, request: &Request, stream: &mut TcpStream) 
         &mut Response::new(201, Headers::new(), None),
         stream,
     )
+    .await
 }

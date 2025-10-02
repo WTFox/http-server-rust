@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read};
-use std::net::TcpStream;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+use tokio::net::TcpStream;
 
 use anyhow::Result;
 
@@ -32,10 +32,10 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn from_stream(stream: &TcpStream) -> Result<Request> {
+    pub async fn from_stream(stream: &mut TcpStream) -> Result<Request> {
         let mut reader = BufReader::new(stream);
         let mut request_line = String::new();
-        reader.read_line(&mut request_line)?;
+        reader.read_line(&mut request_line).await?;
 
         let mut parts = request_line.split_whitespace();
 
@@ -56,7 +56,7 @@ impl Request {
         let mut headers = HashMap::new();
         loop {
             let mut header_line = String::new();
-            reader.read_line(&mut header_line)?;
+            reader.read_line(&mut header_line).await?;
 
             let header_line = header_line.trim();
             if header_line.is_empty() {
@@ -74,7 +74,7 @@ impl Request {
 
         let body = if body_length > 0 {
             let mut body_buf = vec![0u8; body_length];
-            match reader.read_exact(&mut body_buf) {
+            match reader.read_exact(&mut body_buf).await {
                 Ok(_) => String::from_utf8(body_buf).ok(),
                 Err(_) => None,
             }
