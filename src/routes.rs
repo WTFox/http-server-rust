@@ -13,7 +13,7 @@ pub async fn route_request(app: &AppConfig, mut stream: TcpStream) -> Result<()>
     loop {
         let request = Request::from_stream(&mut stream).await?;
         let path = request.path.as_str();
-        match path {
+        let mut response = match path {
             path if path == "/" => {
                 handle_index(&app, &request, &mut stream).await?;
             }
@@ -30,35 +30,37 @@ pub async fn route_request(app: &AppConfig, mut stream: TcpStream) -> Result<()>
             _ => {
                 handler_404(&app, &request, &mut stream).await?;
             }
-        }
+        };
+        // TODO: do more with response here before sending.
+        send_response(app, &request, &mut response, &mut stream).await?
     }
 }
 
-async fn handle_index(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
-    send_response(
-        app,
-        request,
-        &mut Response::new(
-            200,
-            Headers::from([(String::from("Content-Type"), String::from("text/plain"))]),
-            None,
-        ),
-        stream,
-    )
-    .await
+async fn handle_index(
+    _app: &AppConfig,
+    _request: &Request,
+    _stream: &mut TcpStream,
+) -> Result<Response> {
+    Ok(Response::new(
+        200,
+        Headers::from([(String::from("Content-Type"), String::from("text/plain"))]),
+        None,
+    ))
 }
 
-async fn handler_404(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
-    send_response(
-        app,
-        request,
-        &mut Response::new(404, Headers::new(), None),
-        stream,
-    )
-    .await
+async fn handler_404(
+    _app: &AppConfig,
+    _request: &Request,
+    _stream: &mut TcpStream,
+) -> Result<Response> {
+    Ok(Response::new(404, Headers::new(), None))
 }
 
-async fn handle_echo(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
+async fn handle_echo(
+    app: &AppConfig,
+    request: &Request,
+    _stream: &mut TcpStream,
+) -> Result<Response> {
     let param = request.path.split("/").collect::<Vec<&str>>()[2];
 
     let requested_encoding = match request.headers.get("Accept-Encoding") {
@@ -73,20 +75,14 @@ async fn handle_echo(app: &AppConfig, request: &Request, stream: &mut TcpStream)
         resp_headers.insert("Content-Encoding".to_string(), requested_encoding);
     }
 
-    send_response(
-        app,
-        request,
-        &mut Response::new(200, resp_headers, Some(param.into())),
-        stream,
-    )
-    .await
+    Ok(Response::new(200, resp_headers, Some(param.into())))
 }
 
 async fn handle_user_agent(
-    app: &AppConfig,
+    _app: &AppConfig,
     request: &Request,
-    stream: &mut TcpStream,
-) -> Result<()> {
+    _stream: &mut TcpStream,
+) -> Result<Response> {
     let default_ua = String::new();
     let ua = request
         .headers
@@ -99,23 +95,21 @@ async fn handle_user_agent(
         body = Some(ua.as_str().into());
     }
 
-    send_response(
-        app,
-        request,
-        &mut Response::new(
-            200,
-            Headers::from([
-                (String::from("Content-Type"), String::from("text/plain")),
-                (String::from("Content-Length"), ua.len().to_string()),
-            ]),
-            body,
-        ),
-        stream,
-    )
-    .await
+    Ok(Response::new(
+        200,
+        Headers::from([
+            (String::from("Content-Type"), String::from("text/plain")),
+            (String::from("Content-Length"), ua.len().to_string()),
+        ]),
+        body,
+    ))
 }
 
-async fn handle_file_get(app: &AppConfig, request: &Request, stream: &mut TcpStream) -> Result<()> {
+async fn handle_file_get(
+    app: &AppConfig,
+    request: &Request,
+    _stream: &mut TcpStream,
+) -> Result<Response> {
     let filename = request
         .path
         .strip_prefix("/files/")
@@ -130,42 +124,30 @@ async fn handle_file_get(app: &AppConfig, request: &Request, stream: &mut TcpStr
 
     if path.exists() {
         let file_contents = fs::read_to_string(path)?;
-        return send_response(
-            app,
-            request,
-            &mut Response::new(
-                200,
-                Headers::from([
-                    (
-                        String::from("Content-Type"),
-                        String::from("application/octet-stream"),
-                    ),
-                    (
-                        String::from("Content-Length"),
-                        file_contents.len().to_string(),
-                    ),
-                ]),
-                Some(file_contents.into()),
-            ),
-            stream,
-        )
-        .await;
+        return Ok(Response::new(
+            200,
+            Headers::from([
+                (
+                    String::from("Content-Type"),
+                    String::from("application/octet-stream"),
+                ),
+                (
+                    String::from("Content-Length"),
+                    file_contents.len().to_string(),
+                ),
+            ]),
+            Some(file_contents.into()),
+        ));
     }
 
-    send_response(
-        app,
-        request,
-        &mut Response::new(404, Headers::new(), None),
-        stream,
-    )
-    .await
+    Ok(Response::new(404, Headers::new(), None))
 }
 
 async fn handle_file_post(
     app: &AppConfig,
     request: &Request,
-    stream: &mut TcpStream,
-) -> Result<()> {
+    _stream: &mut TcpStream,
+) -> Result<Response> {
     let directory = app.directory.as_deref().unwrap_or_default();
     let filename = request.path.strip_prefix("/files/").unwrap();
     let contents = match request.body.as_ref() {
@@ -176,31 +158,19 @@ async fn handle_file_post(
     let filepath = format!("{}{}", directory, filename);
     let path = Path::new(&filepath);
     if path.exists() {
-        return send_response(
-            app,
-            request,
-            &mut Response::new(
-                200,
-                Headers::from([(
-                    String::from("Content-Type"),
-                    String::from("application/octet-stream"),
-                )]),
-                None,
-            ),
-            stream,
-        )
-        .await;
+        return Ok(Response::new(
+            200,
+            Headers::from([(
+                String::from("Content-Type"),
+                String::from("application/octet-stream"),
+            )]),
+            None,
+        ));
     }
 
     fs::create_dir_all(&directory)?;
     let mut f = fs::File::create(path)?;
     f.write_all(contents.as_bytes())?;
 
-    send_response(
-        app,
-        request,
-        &mut Response::new(201, Headers::new(), None),
-        stream,
-    )
-    .await
+    Ok(Response::new(201, Headers::new(), None))
 }
